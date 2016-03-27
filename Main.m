@@ -1,2 +1,2 @@
-grid = Setup(5,5);
+grid = Setup(20,20);
 PlotGrid(grid);
