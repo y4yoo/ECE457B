@@ -8,7 +8,7 @@ function [grid] = Setup(x, y)
     for i = 1:x
         for j = 1:y
             random = rand;
-            if(random > 0.5)  
+            if(random > 0.9)
                 grid(i,j) = 1;
             end
         end

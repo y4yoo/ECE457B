@@ -1,2 +1,2 @@
 grid = Setup(5,5);
-PlotGrid(grid);
+SenseSurroundings(1,5,grid);
