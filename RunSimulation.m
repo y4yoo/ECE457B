@@ -36,73 +36,81 @@ function RunSimulation(fieldDimensions, obstacles, startingCoords, goalCoord, vi
     velocity = 0;
     
     %Define output fuzzy fuctions
-    accelRange = 0:0.05:2;
-    turnRange = -pi/9:pi/108:pi/9;
+    accelRange = 0:0.005:4;
+    turnRange = -pi/9:pi/243:pi/9;
     
-    posLAccel = gaussmf(accelRange, [0.25 2]);
-    posAccel = gaussmf(accelRange, [0.25 1]);
-    constAccel = gaussmf(accelRange, [0.25 0]);
+    posLAccel = smf(accelRange, [2.5 4]);
+    posAccel = gaussmf(accelRange, [0.6 2]);
+    constAccel = zmf(accelRange, [0 1.5]);
     
-    left = gaussmf(turnRange, [0.05 -pi/9]);
+    left = zmf(turnRange, [-pi/9 -1.5*pi/18]);
     smallLeft = gaussmf(turnRange, [0.05 -pi/18]);
     straight = gaussmf(turnRange, [0.05 0]);
     smallRight = gaussmf(turnRange, [0.05 pi/18]);
-    right = gaussmf(turnRange, [0.05 pi/9]);
-    
-    %plot output graphs
-    figure('Name','Acceleration');
-    hold on;
-    plot(accelRange, posLAccel);
-    plot(accelRange, posAccel);
-    plot(accelRange, constAccel);
-    figure('Name','Turn Direction');
-    hold on;
-    plot(turnRange, left);
-    plot(turnRange, smallLeft);
-    plot(turnRange, straight);
-    plot(turnRange, smallRight);
-    plot(turnRange, right);
+    right = smf(turnRange, [1.5*pi/18 pi/9]);
     
     TIME_PER_TICK = 0.1; % time in sec per iterations
     
     set(0,'CurrentFigure',simFig);
     hold on;
     
+    timeM = zeros(10000,1);
+    time = 0;
+    velVsTime = zeros(10000,1);
+    directionVTime = zeros(10000,1);
+    iteration = 1;
+    
+    %reachedDestination = 1;
+    
     while ~reachedDestination
         % Get distance and angle of closest obstacle
         [dist angle] = getVisibleObstacleDistAng(position, direction,visibilityRadius, obstacleEdges);
         distToTarget = sqrt((goalCoord(1) - position(1))^2+(goalCoord(2) - position(2))^2);
         angleToTarget = atan(abs(goalCoord(2) - position(2))/abs(goalCoord(1) - position(1)));
-        diffAngleToTarget = angle - angleToTarget;
+        
+        if (goalCoord(1) < position(1) && goalCoord(2) < position(2))
+            angleToTarget = angleToTarget + pi;
+        elseif goalCoord(1) < position(1)
+            angleToTarget = (pi/2 - angleToTarget) + pi/2;
+        elseif goalCoord(2) < position(2)
+            angleToTarget = (pi/2 - angleToTarget) + 3*pi/2;
+        end
+        
+        diffAngleToTarget = direction - angleToTarget;
+        
+        if diffAngleToTarget > pi
+            diffAngleToTarget = 2*pi - diffAngleToTarget;
+        elseif diffAngleToTarget < -pi
+            diffAngleToTarget = 2*pi + diffAngleToTarget;
+        end
         
         diffAngleToTarget = diffAngleToTarget * 180/pi; %convert radians to degrees
-        
+        angle = angle * 180/pi;
         % Fuzzify input readings
         
         %angle of obstacle
-        straightToObj = generateMF(angle, 0, -15);
+        leftToObj = zmf(angle, [-20 -15]);
         slightLeftToObj = generateMF(angle, -10, -15);
-        leftToObj = generateMF(angle, -20, -15);
+        straightToObj = generateMF(angle, 0, -15);
         slightRightToObj = generateMF(angle, 10, -15);
-        rightToObj = generateMF(angle, 20, -15);
+        rightToObj = smf(angle, [15 20]);
         
         %distance of obstacle
-        closeToObj = generateMF(dist, 0, -1/4);
+        closeToObj = zmf(dist, [0 0.75]);
         mediumToObj = generateMF(dist, 1, -1/4);
-        farToObj = generateMF(dist, 2, -1/4);
-        farToObj = 1; % remove
+        farToObj = smf(dist, [1.25 2]);
         
         %distance to target
-        closeToTar = generateMF(distToTarget, 0, -10);
-        mediumToTar = generateMF(distToTarget, 10, -20);
-        farToTar = generateMF(distToTarget, 20, -20);
+        closeToTar = zmf(distToTarget, [0 0.5]);
+        mediumToTar = generateMF(distToTarget, 1, -0.25);
+        farToTar = smf(distToTarget, [2 3]);
         
         %angle of target
         straightT = generateMF(diffAngleToTarget, 0, -15);
         slightLeftT = generateMF(diffAngleToTarget, -10, -15);
-        leftT = generateMF(diffAngleToTarget, -20, -15);
+        leftT = zmf(diffAngleToTarget, [-20 -15]);
         slightRightT = generateMF(diffAngleToTarget, 10, -15);
-        rightT = generateMF(diffAngleToTarget, 20, -15);
+        rightT = smf(diffAngleToTarget, [15 20]);
          
         %evaluate rules 
         
@@ -111,25 +119,38 @@ function RunSimulation(fieldDimensions, obstacles, startingCoords, goalCoord, vi
         rule1 = min([farToObj mediumToTar]); % then const accel
         rule2 = min([farToObj closeToTar]); % then negative accel
         
-        rule3 = min([farToObj straightT]); % then no turn
+        rule3 = min([farToObj leftT]); % then turn a lot left
         rule4 = min([farToObj slightLeftT]); % then turn a bit left
-        rule5 = min([farToObj leftT]); % then turn a lot left
+        rule5 = min([farToObj straightT]); % then no turn
         rule6 = min([farToObj slightRightT]); % then turn a bit right
         rule7 = min([farToObj rightT]); % then turn a bit left
+        
+        %When obstacle is getting close
+        rule8 = min([max([closeToObj]) leftToObj]);
+        rule9 = min([max([closeToObj]) slightLeftToObj]); 
+        rule10 = min([max([closeToObj]) straightToObj]); 
+        rule11 = min([max([closeToObj]) slightRightToObj]); 
+        rule12 = min([max([closeToObj]) rightToObj]); 
+        
+        rule13 = min([max([mediumToObj]) slightLeftToObj]);
+        rule14 = min([max([mediumToObj]) slightLeftToObj]); 
+        rule15 = min([max([mediumToObj]) straightToObj]); 
+        rule16 = min([max([mediumToObj]) slightRightToObj]); 
+        rule17 = min([max([mediumToObj]) slightRightToObj]); 
         
         % defuzzify
         
         %acceleration
-        posLAccelY = max([rule0]);
-        posAccelY = max([rule1]);
-        constAccelY = max([rule2]);
+        posLAccelY = max([rule0 rule1]);
+        posAccelY = max([rule13 rule14 rule15 rule16 rule17]);
+        constAccelY = max([rule2 rule8 rule9 rule10 rule11 rule12]);
         
         %angle
-        leftY = max([rule3]);
-        smallLeftY = max([rule4]);
-        straightY = max([rule5]);
-        smallRightY = max([rule6]);
-        rightY = max([rule7]);
+        leftY = max([rule3 rule12 rule17]);
+        smallLeftY = max([rule4 rule11 rule16]);
+        straightY = max([rule5 rule10 rule15]);
+        smallRightY = max([rule6 rule9 rule14]);
+        rightY = max([rule7 rule8 rule13]); 
          
         acceleration = defuzz(accelRange,max(posLAccelY*posLAccel,max(posAccelY*posAccel, constAccelY*constAccel)), 'centroid');
         dAngle = defuzz(turnRange, ....
@@ -138,16 +159,77 @@ function RunSimulation(fieldDimensions, obstacles, startingCoords, goalCoord, vi
             max(straightY*straight, ...
             max(smallRightY*smallRight, rightY*right)))), 'centroid');
         
-        dAngle = dAngle*pi/180;
-        
         % update velocity, direction and current position for next tick
         velocity = velocity + acceleration;
-        angle = angle + dAngle;
-        position(1) = position(1) + TIME_PER_TICK*velocity*cos(angle);
-        position(2) = position(2) + TIME_PER_TICK*velocity*sin(angle);
+        direction = direction - dAngle;
+        position(1) = position(1) + TIME_PER_TICK*acceleration*cos(direction);
+        position(2) = position(2) + TIME_PER_TICK*acceleration*sin(direction);
         
         plot(position(1), position(2), 'og');
+        
+        if position(1) > (goalCoord(1) - 0.1) && position(1) < (goalCoord(1) + 0.1) && position(2) > (goalCoord(2) - 0.1) && position(2) < (goalCoord(2) + 0.1)
+            reachedDestination = 1;
+        end
+        
+        timeM(iteration) = time;
+        velVsTime(iteration) = acceleration;
+        directionVTime(iteration) = direction*180/pi;
+        time = time + TIME_PER_TICK;
+        iteration = iteration + 1;
+        pause(0.001);
     end
+    
+    %plot output graphs
+    figure('Name','Velocity over time');
+    hold on;
+    plot(timeM, velVsTime);
+    plot(timeM, directionVTime);
+    
+    figure('Name','Acceleration');
+    hold on;
+    plot(accelRange, posLAccel);
+    plot(accelRange, posAccel);
+    plot(accelRange, constAccel);
+    
+    figure('Name','Turn Direction');
+    hold on;
+    plot(turnRange, left);
+    plot(turnRange, smallLeft);
+    plot(turnRange, straight);
+    plot(turnRange, smallRight);
+    plot(turnRange, right);
+    
+    figure('Name','Dist to target');
+    hold on;
+    x = 0:0.1:3;
+    plot(x, zmf(x, [0 0.5]));
+    plot(x, generateMF(x, 1, -0.25));
+    plot(x, smf(x, [2 3]));
+    
+    figure('Name','Angle to target');
+    hold on;
+    x = -20:0.1:20;
+    plot(x, generateMF(x, 0, -15));
+    plot(x, generateMF(x, -10, -15));
+    plot(x, zmf(x, [-20 -15]));
+    plot(x, generateMF(x, 10, -15));
+    plot(x, smf(x, [15 20]));
+    
+    figure('Name','Dist to Object');
+    hold on;
+    x = 0:0.1:2;
+    plot(x, zmf(x, [0 0.75]));
+    plot(x, generateMF(x, 1, -1/4));
+    plot(x, smf(x, [1.25 2]));
+    
+    figure('Name','Angle to Object');
+    hold on;
+    x = -20:0.1:20;
+    plot(x, zmf(x, [-20 -15]));
+    plot(x, generateMF(x, -10, -15));
+    plot(x, generateMF(x, 0, -15));
+    plot(x, generateMF(x, 10, -15));
+    plot(x, smf(x, [15 20]));
 end
 
 function [obstacleEdges] = getObstacleEdges(obstacles, fieldDimensions)
@@ -191,7 +273,7 @@ function [dist angle] = getVisibleObstacleDistAng(pos, direction, radius, obstac
             intDist = sqrt((xInt - pos(1))^2+(yInt-pos(2))^2);
             if intDist < dist
                 dist = intDist;
-                angle = scanAngle;
+                angle = direction - scanAngle;
             end
         end
         scanAngle = scanAngle + pi/180;
