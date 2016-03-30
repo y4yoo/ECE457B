@@ -58,6 +58,7 @@ function RunSimulation(fieldDimensions, obstacles, startingCoords, goalCoord, vi
     time = 0;
     velVsTime = zeros(10000,1);
     directionVTime = zeros(10000,1);
+    tarDistVTime = zeros(10000,1);
     iteration = 1;
     
     %reachedDestination = 1;
@@ -101,8 +102,8 @@ function RunSimulation(fieldDimensions, obstacles, startingCoords, goalCoord, vi
         farToObj = smf(dist, [1.25 2]);
         
         %distance to target
-        closeToTar = zmf(distToTarget, [0 0.5]);
-        mediumToTar = generateMF(distToTarget, 1, -0.25);
+        closeToTar = zmf(distToTarget, [0 1]);
+        mediumToTar = generateMF(distToTarget, 1.5, -0.5);
         farToTar = smf(distToTarget, [2 3]);
         
         %angle of target
@@ -132,11 +133,11 @@ function RunSimulation(fieldDimensions, obstacles, startingCoords, goalCoord, vi
         rule11 = min([max([closeToObj]) slightRightToObj]); 
         rule12 = min([max([closeToObj]) rightToObj]); 
         
-        rule13 = min([max([mediumToObj]) slightLeftToObj]);
+        rule13 = min([max([mediumToObj]) leftToObj]);
         rule14 = min([max([mediumToObj]) slightLeftToObj]); 
         rule15 = min([max([mediumToObj]) straightToObj]); 
         rule16 = min([max([mediumToObj]) slightRightToObj]); 
-        rule17 = min([max([mediumToObj]) slightRightToObj]); 
+        rule17 = min([max([mediumToObj]) rightToObj]); 
         
         % defuzzify
         
@@ -146,12 +147,22 @@ function RunSimulation(fieldDimensions, obstacles, startingCoords, goalCoord, vi
         constAccelY = max([rule2 rule8 rule9 rule10 rule11 rule12]);
         
         %angle
-        leftY = max([rule3 rule12 rule17]);
-        smallLeftY = max([rule4 rule11 rule16]);
+        leftY = max([rule3 rule11 rule16]);
+        smallLeftY = max([rule4 rule12 rule17]);
         straightY = max([rule5 rule10 rule15]);
-        smallRightY = max([rule6 rule9 rule14]);
-        rightY = max([rule7 rule8 rule13]); 
+        smallRightY = max([rule6 rule8 rule13]);
+        rightY = max([rule7 rule9 rule14]); 
          
+        %{
+        figure
+        plot(accelRange,max(posLAccelY*posLAccel,max(posAccelY*posAccel, constAccelY*constAccel)));
+        figure
+        plot(turnRange, ....
+            max(leftY*left, ...
+            max(smallLeftY*smallLeft, ...
+            max(straightY*straight, ...
+            max(smallRightY*smallRight, rightY*right)))));
+        %}
         acceleration = defuzz(accelRange,max(posLAccelY*posLAccel,max(posAccelY*posAccel, constAccelY*constAccel)), 'centroid');
         dAngle = defuzz(turnRange, ....
             max(leftY*left, ...
@@ -174,16 +185,23 @@ function RunSimulation(fieldDimensions, obstacles, startingCoords, goalCoord, vi
         timeM(iteration) = time;
         velVsTime(iteration) = acceleration;
         directionVTime(iteration) = direction*180/pi;
+        tarDistVTime(iteration) = distToTarget;
         time = time + TIME_PER_TICK;
         iteration = iteration + 1;
         pause(0.001);
     end
     
+    %{
     %plot output graphs
     figure('Name','Velocity over time');
     hold on;
     plot(timeM, velVsTime);
+    figure('Name','Direction over time');
+    hold on;
     plot(timeM, directionVTime);
+    figure('Name','Target Distance over Time');
+    hold on;
+    plot(timeM, tarDistVTime);
     
     figure('Name','Acceleration');
     hold on;
@@ -202,8 +220,8 @@ function RunSimulation(fieldDimensions, obstacles, startingCoords, goalCoord, vi
     figure('Name','Dist to target');
     hold on;
     x = 0:0.1:3;
-    plot(x, zmf(x, [0 0.5]));
-    plot(x, generateMF(x, 1, -0.25));
+    plot(x, zmf(x, [0 1]));
+    plot(x, generateMF(x, 1.5, -0.5));
     plot(x, smf(x, [2 3]));
     
     figure('Name','Angle to target');
@@ -230,6 +248,7 @@ function RunSimulation(fieldDimensions, obstacles, startingCoords, goalCoord, vi
     plot(x, generateMF(x, 0, -15));
     plot(x, generateMF(x, 10, -15));
     plot(x, smf(x, [15 20]));
+    %}
 end
 
 function [obstacleEdges] = getObstacleEdges(obstacles, fieldDimensions)
